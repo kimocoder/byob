@@ -136,7 +136,7 @@ def __get_all():
 
 def main():
     for module in __all__:
-        exec("import {}".format(module))
+        exec(f"import {module}")
 
 __all__ = __get_all()
 __version__ = '0.5'

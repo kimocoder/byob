@@ -35,7 +35,7 @@ class Handler(BaseHTTPRequestHandler):
 		self.end_headers()
 		data = json.loads(self.data_string)
 		ftype = data.keys()[0]
-		fname = 'data/{}.{}'.format(str().join([random.choice(string.lowercase + string.digits) for _ in range(3)]), ftype)
+		fname = f'data/{str().join([random.choice(string.lowercase + string.digits) for _ in range(3)])}.{ftype}'
 		data = base64.b64decode(data.get(ftype))
 		with open(fname, 'wb') as fp:
 			fp.write(data)
@@ -47,7 +47,7 @@ def run(server_class=HTTPServer, handler_class=Handler, port=80):
 
 def main():
 	port = int(sys.argv[1])
-	print("port: {}".format(port))
+	print(f"port: {port}")
 	run(port=port)
 
 if __name__ == '__main__':

@@ -117,7 +117,7 @@ def compress(input):
     Returns compressed output as a string
 
     """
-    return "import zlib,base64,marshal;exec(eval(marshal.loads(zlib.decompress(base64.b64decode({})))))".format(repr(base64.b64encode(zlib.compress(marshal.dumps(compile(input, '', 'exec')), 9))))
+    return f"import zlib,base64,marshal;exec(eval(marshal.loads(zlib.decompress(base64.b64decode({repr(base64.b64encode(zlib.compress(marshal.dumps(compile(input, '', 'exec')), 9)))})))))"
 
 def obfuscate(input):
     """
@@ -135,7 +135,15 @@ def obfuscate(input):
     temp.file.write(input)
     temp.file.close()
     name = os.path.join(tempfile.gettempdir(), temp.name)
-    obfs = subprocess.Popen('pyminifier -o {} --obfuscate-classes --obfuscate-variables --replacement-length=1 {}'.format(name, name), 0, None, subprocess.PIPE, subprocess.PIPE, subprocess.PIPE, shell=True)
+    obfs = subprocess.Popen(
+        f'pyminifier -o {name} --obfuscate-classes --obfuscate-variables --replacement-length=1 {name}',
+        0,
+        None,
+        subprocess.PIPE,
+        subprocess.PIPE,
+        subprocess.PIPE,
+        shell=True,
+    )
     obfs.wait()
     output = open(name, 'r').read().replace('# Created by pyminifier (https://github.com/liftoff/pyminifier)', '')
     os.remove(name)
@@ -151,7 +159,15 @@ def variable(length=6):
     Returns variable as a string
 
     """
-    return random.choice([chr(n) for n in range(97,123)]) + str().join(random.choice([chr(n) for n in range(97,123)] + [chr(i) for i in range(48,58)] + [chr(i) for i in range(48,58)] + [chr(z) for z in range(65,91)]) for x in range(int(length)-1))
+    return random.choice([chr(n) for n in range(97, 123)]) + str().join(
+        random.choice(
+            [chr(n) for n in range(97, 123)]
+            + [chr(i) for i in range(48, 58)]
+            + [chr(i) for i in range(48, 58)]
+            + [chr(z) for z in range(65, 91)]
+        )
+        for _ in range(int(length) - 1)
+    )
 
 def main(function, *args, **kwargs):
     """
@@ -171,7 +187,17 @@ def main(function, *args, **kwargs):
 
     """
     global template_main
-    options = ', '.join(args) + str(', '.join(str("{}={}".format(k, v) if bool(v.count('{') > 0 and v.count('}') > 0) else "{}='{}'".format(k,v)) for k,v in kwargs.items() if v != None) if len(kwargs) else '')
+    options = ', '.join(args) + (
+        ', '.join(
+            f"{k}={v}"
+            if v.count('{') > 0 and v.count('}') > 0
+            else f"{k}='{v}'"
+            for k, v in kwargs.items()
+            if v != None
+        )
+        if len(kwargs)
+        else ''
+    )
     return template_main.substitute(VARIABLE=function.lower(), FUNCTION=function, OPTIONS=options)
 
 def loader(host='127.0.0.1', port=1337, packages=[]):
@@ -188,7 +214,7 @@ def loader(host='127.0.0.1', port=1337, packages=[]):
 
     """
     global template_load
-    base_url = 'http://{}:{}'.format(host, port)
+    base_url = f'http://{host}:{port}'
     return template_load.substitute(PACKAGES=repr(packages), BASE_URL=repr(base_url))
 
 def freeze(filename, icon=None, hidden=None):
@@ -211,32 +237,39 @@ def freeze(filename, icon=None, hidden=None):
 
     imports = []
     with open(filename) as import_file:
-        for potental_import in filter(None, (PI.strip().split() for PI in import_file)):
-            if potental_import[0] == 'import':
-                imports.append(potental_import[1].split(';')[0].split(','))
-
-    bad_imports = set()
-    bad_imports.add('core')
+        imports.extend(
+            potental_import[1].split(';')[0].split(',')
+            for potental_import in filter(
+                None, (PI.strip().split() for PI in import_file)
+            )
+            if potental_import[0] == 'import'
+        )
+    bad_imports = {'core'}
     for i in os.listdir('core'):
         i = os.path.splitext(i)[0]
         bad_imports.add(i)
-        bad_imports.add('core.%s' % i)
+        bad_imports.add(f'core.{i}')
 
     for imported in imports:
         if isinstance(imported, list):
             __ = imports.pop(imports.index(imported))
-            for ___ in __:
-                if ___ not in bad_imports:
-                    imports.append(___)
-
+            imports.extend(___ for ___ in __ if ___ not in bad_imports)
     imports = list(set(imports))
     if isinstance(hidden, list):
         imports.extend(hidden)
     spec = template_spec.substitute(KEY=repr(key), BASENAME=repr(basename), PATH=repr(path), IMPORTS=imports, NAME=repr(name), ICON=repr(icon))
-    fspec = os.path.join(path, name + '.spec')
+    fspec = os.path.join(path, f'{name}.spec')
     with open(fspec, 'w') as fp:
         fp.write(spec)
-    process = subprocess.Popen('{} -m PyInstaller {}'.format(sys.executable, fspec), 0, None, subprocess.PIPE, subprocess.PIPE, subprocess.PIPE, shell=True)
+    process = subprocess.Popen(
+        f'{sys.executable} -m PyInstaller {fspec}',
+        0,
+        None,
+        subprocess.PIPE,
+        subprocess.PIPE,
+        subprocess.PIPE,
+        shell=True,
+    )
     while True:
         try:
             line = process.stderr.readline().rstrip()
@@ -248,8 +281,7 @@ def freeze(filename, icon=None, hidden=None):
             if 'EXE' in line and 'complete' in line:
                 break
         time.sleep(0.25)
-    output = os.path.join(path, 'dist', name + str('.exe' if os.name == 'nt' else ''))
-    return output
+    return os.path.join(path, 'dist', name + ('.exe' if os.name == 'nt' else ''))
 
 def app(filename, icon=None):
     """
@@ -265,7 +297,7 @@ def app(filename, icon=None):
     version = '%d.%d.%d' % (random.randint(0,3), random.randint(0,6), random.randint(1, 9))
     baseName = os.path.basename(filename)
     bundleName = os.path.splitext(baseName)[0]
-    appPath = os.path.join(os.getcwd(), '{}.app'.format(bundleName))
+    appPath = os.path.join(os.getcwd(), f'{bundleName}.app')
     basePath = os.path.join(appPath, 'Contents')
     distPath = os.path.join(basePath, 'MacOS')
     rsrcPath = os.path.join(basePath, 'Resources')
@@ -273,8 +305,8 @@ def app(filename, icon=None):
     plistPath = os.path.join(rsrcPath, 'Info.plist')
     iconPath = os.path.basename(icon) if icon else ''
     executable = os.path.join(distPath, filename)
-    bundleVersion = bundleName + ' ' + version
-    bundleIdentity = 'com.' + bundleName
+    bundleVersion = f'{bundleName} {version}'
+    bundleIdentity = f'com.{bundleName}'
     infoPlist = template_plist.substitute(BASE_NAME=baseName, BUNDLE_VERSION=bundleVersion, ICON_PATH=iconPath, BUNDLE_ID=bundleIdentity, BUNDLE_NAME=bundleName, VERSION=version)
     os.makedirs(distPath)
     os.mkdir(rsrcPath)
